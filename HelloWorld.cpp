@@ -31,21 +31,8 @@ struct Hello : public ModulePass {
     return false;
   }
 
-  // bool isValidTarget(Function &Func) {
-  //   // Exclude unwanted functions explicitly
-  //   StringRef FuncName = Func.getName();
-  //   if (FuncName.contains("not_entry_point")) {
-  //       errs() << "  Skipping function: " << FuncName << "\n";
-  //       return false;
-  //   }
-  //   return true;
-  // }
-
   bool findIndirectJump(Module &M) {
     for (auto &F : M) {
-      // if (!isValidTarget(F)) {
-      //   continue;
-      // }
       errs() << "Analyzing function: " << F.getName() << "\n";
       for (auto &BB : F) {
         for (auto &I : BB) {
@@ -74,76 +61,81 @@ struct Hello : public ModulePass {
       }
     }
     return false;
-  } // Set to 1 to enable debug prints, 0 to disable
-  if (Function *F = M->getFunction(InitCFGName)) {
-    return F;
   }
 
-  LLVMContext &Context = M->getContext();
-  FunctionType *InitCFGType =
-      FunctionType::get(Type::getVoidTy(Context), false);
-  return Function::Create(InitCFGType, Function::ExternalLinkage, InitCFGName,
-                          M);
-}
-
-Function *
-getCFICheckFunction(Module *M) {
-  static const std::string CFICheckFuncName = "__cfi_check_bb";
-  if (Function *F = M->getFunction(CFICheckFuncName)) {
-    return F;
-  }
-
-  LLVMContext &Context = M->getContext();
-  // Fix: declare with both parameters
-  FunctionType *CheckFuncType = FunctionType::get(
-      Type::getVoidTy(Context),
-      {Type::getInt32Ty(Context), Type::getInt8PtrTy(Context)}, false);
-  return Function::Create(CheckFuncType, Function::ExternalLinkage,
-                          CFICheckFuncName, M);
-}
-
-bool instrumentInitCFGFunction(Module &M) {
-  for (Function &F : M) {
-    if (F.getName() == "main") {
-      IRBuilder<> Builder(&*F.getEntryBlock().getFirstInsertionPt());
-      Function *InitCFGFunc = getInitCFGFunction(&M);
-      Builder.CreateCall(InitCFGFunc);
-      return true;
+  Function *getInitCFGFunction(Module *M) {
+    static const std::string InitCFGName = "initCFG";
+    if (Function *F = M->getFunction(InitCFGName)) {
+      return F;
     }
+  
+    LLVMContext &Context = M->getContext();
+    FunctionType *InitCFGType =
+        FunctionType::get(Type::getVoidTy(Context), false);
+    Function *InitCFGFunc = Function::Create(InitCFGType, Function::ExternalLinkage,
+                                             InitCFGName, M);  
+    return InitCFGFunc;
   }
-  return false;
-}
+  
 
-bool instrumentCFIcheckFunction(Module &M) {
-  LLVMContext &Ctx = M.getContext();
-  Type *Int32Ty = Type::getInt32Ty(Ctx);
-
-  FunctionCallee cfiCheckFunc = M.getOrInsertFunction(
-      "__cfi_check_bb",
-      FunctionType::get(Type::getVoidTy(Ctx),
-                        {Int32Ty, Type::getInt8PtrTy(Ctx)}, false));
-
-  for (auto &F : M) {
-    for (auto &BB : F) {
-      int blockID = BBIDMap[&BB];
-      IRBuilder<> Builder(&BB, BB.getFirstInsertionPt());
-      Value *blockIDVal = ConstantInt::get(Int32Ty, blockID);
-      Value *funcName = Builder.CreateGlobalStringPtr(F.getName());
-      Builder.CreateCall(cfiCheckFunc, {blockIDVal, funcName});
+  Function *
+  getCFICheckFunction(Module *M) {
+    static const std::string CFICheckFuncName = "__cfi_check_bb";
+    if (Function *F = M->getFunction(CFICheckFuncName)) {
+      return F;
     }
-  }
-  return true;
-}
 
-bool runOnModule(Module &M) override {
-  assignBasicBocksIDs(M);
-  findIndirectJump(M);
-  instrumentInitCFGFunction(M);
-  instrumentCFIcheckFunction(M);
-  return true;
-}
+    LLVMContext &Context = M->getContext();
+    FunctionType *CheckFuncType = FunctionType::get(
+        Type::getVoidTy(Context),
+        {Type::getInt32Ty(Context), Type::getInt8PtrTy(Context)}, false);
+    return Function::Create(CheckFuncType, Function::ExternalLinkage,
+                            CFICheckFuncName, M);
+  }
+
+  bool instrumentInitCFGFunction(Module &M) {
+    for (Function &F : M) {
+      if (F.getName() == "main") {
+        IRBuilder<> Builder(&*F.getEntryBlock().getFirstInsertionPt());
+        Function *InitCFGFunc = getInitCFGFunction(&M);
+        Builder.CreateCall(InitCFGFunc);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool instrumentCFIcheckFunction(Module &M) {
+    LLVMContext &Ctx = M.getContext();
+    Type *Int32Ty = Type::getInt32Ty(Ctx);
+
+    FunctionCallee cfiCheckFunc = M.getOrInsertFunction(
+        "__cfi_check_bb",
+        FunctionType::get(Type::getVoidTy(Ctx),
+                          {Int32Ty, Type::getInt8PtrTy(Ctx)}, false));
+
+    for (auto &F : M) {
+      for (auto &BB : F) {
+        int blockID = BBIDMap[&BB];
+        IRBuilder<> Builder(&BB, BB.getFirstInsertionPt());
+        Value *blockIDVal = ConstantInt::get(Int32Ty, blockID);
+        Value *funcName = Builder.CreateGlobalStringPtr(F.getName());
+        Builder.CreateCall(cfiCheckFunc, {blockIDVal, funcName});
+      }
+    }
+    return true;
+  }
+
+  bool runOnModule(Module &M) override {
+    assignBasicBocksIDs(M);
+    findIndirectJump(M);
+    instrumentInitCFGFunction(M);
+    instrumentCFIcheckFunction(M);
+    return true;
+  }
 };
-}
+
+} // namespace
 
 char Hello::ID = 0;
 static RegisterPass<Hello> X("hello", "Hello World Pass",
