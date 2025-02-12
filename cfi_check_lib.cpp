@@ -54,11 +54,6 @@ extern "C" void __cfi_check_bb(int targetBBID, const char *functionName) {
         throw std::runtime_error("Control flow integrity check failed");
       }
 
-      if (targetBBID == 5) {
-#if DEBUG
-        std::cerr << "CFI will not protect transfer to here" << std::endl;
-#endif
-      }
     }
   }
 
