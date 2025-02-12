@@ -1,0 +1,6 @@
+/home/cse569s/nevin/lab1_skeleton/build/CMakeFiles/intrinsics_gen.dir
+/home/cse569s/nevin/lab1_skeleton/build/CMakeFiles/omp_gen.dir
+/home/cse569s/nevin/lab1_skeleton/build/CMakeFiles/acc_gen.dir
+/home/cse569s/nevin/lab1_skeleton/build/CMakeFiles/HelloWorld.dir
+/home/cse569s/nevin/lab1_skeleton/build/CMakeFiles/edit_cache.dir
+/home/cse569s/nevin/lab1_skeleton/build/CMakeFiles/rebuild_cache.dir
